@@ -1,5 +1,7 @@
 import sys
 import collections
+# ヒープを使うためのライブラリ
+import heapq
 
 # que,stackを使うためライブラリを使用
 from collections import deque
@@ -99,27 +101,47 @@ class Wikipedia:
     def find_shortest_path(self, start, goal):
         # start/goalのIDを取得
         startID = self.getIdFromTitles(start)
-        goalID = self.getIdFromTitles(goal) 
+        goalID = self.getIdFromTitles(goal)
 
         stack = deque()
         visited = {}
         links = self.links
-        visited[startID] = True
+        titles = self.titles
+        # 親のidを保持
+        visited[startID] = -1
         # IDと距離を保存
         stack.append((startID,0))
+        
         while stack:
             current_id,current_distance = stack.popleft()
 
             if current_id == goalID:
+                shortest_path = deque()
+                shortest_path.append(current_id)
+                parent_id = visited[current_id]
+
+                # 親のidをもとに、最短経路を遡る
+                while parent_id != -1:
+                    shortest_path.append(parent_id)
+                    parent_id = visited[parent_id]
+                
+                now_id = shortest_path.pop()
+                while True:
+                    print(titles[now_id])
+                    if len(shortest_path) == 0:
+                        break
+                    now_id = shortest_path.pop()
+
                 print(f"The shortest path between {start} and {goal} is {current_distance}")
                 return current_distance
             # currentノードがgoalと一致しなければ、distanceを1増やす
             current_distance += 1
             for child in links[current_id]:
                 if not child in visited:
-                    visited[child] = True
+                    visited[child] = current_id
                     stack.append((child,current_distance))
         return "Not found"
+    
 
     # ページランクtop10を求める関数
     def top_10_ranks(self,dictionary):
@@ -184,15 +206,6 @@ class Wikipedia:
                 # 無条件で0.15を保持
                 next_page_ranks[id] += 0.15 + (no_link_pagerank / all_node) * 0.85
 
-                
-                # 隣接ノードを持たない場合は、全ノードに0.85を分配
-                
-
-                '''
-                else:
-                    for link_id in links[id]:
-                        next_page_ranks[link_id] += current_page_rank * 0.85 / current_link_count
-                '''
                 for link_id in links[id]:
                     next_page_ranks[link_id] += current_page_rank * 0.85 / current_link_count
 
@@ -205,8 +218,9 @@ class Wikipedia:
                 all_pagerank += next_page_ranks[id]
 
             if difference_ranks < 0.01:
+                return_page_ranks = next_page_ranks.copy()
                 self.top_10_ranks(next_page_ranks)
-                break
+                return return_page_ranks
 
             current_page_ranks = next_page_ranks.copy()
 
@@ -215,6 +229,7 @@ class Wikipedia:
             # ページランクが保存しているか確認
             print(all_pagerank,all_node)
             assert(all_pagerank - all_node < 0.001)
+
 
     
     
@@ -225,14 +240,18 @@ class Wikipedia:
     # 'start': A title of the start page.
     # 'goal': A title of the goal page.
     # HW2の関数が使えそう
+
+    # ゴリ押しの解法
+    # 単純にDFSを回し、最大の長さに制限をかけることで計算量が爆発するのを防ぐ
     def find_longest_path(self, start, goal):
         startID = self.getIdFromTitles(start)
-        goalID = self.getIdFromTitles(goal) 
+        goalID = self.getIdFromTitles(goal)
 
         queue = deque()
-        visited = {}
+        #visited = {}
         links = self.links
-        visited[startID] = True
+        titles = self.titles
+
         # IDとpathと距離を保存
         queue.append((startID,[startID],0))
 
@@ -240,11 +259,13 @@ class Wikipedia:
         longest_path = []
         max_length = -1
         end_cnt = 0
+        max_depth = 0
 
         while queue:
             current_id,current_path,current_distance = queue.pop()
             # popしたタイミングでvisitに変更
-            visited[current_id] = True
+            #current_path.append(current_id)
+            
 
             if current_id == goalID:
                 print(current_path)
@@ -259,15 +280,141 @@ class Wikipedia:
 
             # currentノードがgoalと一致しなければ、distanceを1増やす
             current_distance += 1
+
+            if current_distance == 100000:
+                continue
+            
+
             for child in links[current_id]:
-                if not child in visited:
+                if not child in current_path:
                     queue.append((child,current_path + [child],current_distance))
+
 
         if longest_path:
             self.assert_path(longest_path,start,goal)
             print(f"The longest path between {start} and {goal} is {max_length}")
+            for path in longest_path:
+                print(titles[path])
             return longest_path
-        return "Not found"
+        print("Not found")
+
+
+
+    def find_most_popular_pages2(self,num):
+        links = self.links
+        # 全てのnodeの数を保持
+        all_node = len(self.titles)
+        eps = num
+
+        # 現在のページランクとIDの関係を保存する辞書
+        current_page_ranks = {}
+        # 次のページランクとIDの関係を保存する辞書
+        next_page_ranks = {}
+
+        for id in links.keys():
+            current_page_ranks[id] = 1
+            next_page_ranks[id] = 0
+
+        # 各IDが持つ隣接リンクの個数
+        link_count = {}
+
+        for id,link in links.items():
+            link_count[id] = len(link)
+
+        # page_rankを更新
+        while True:
+            all_pagerank = 0
+
+            # 孤立点のpage rankをカウント
+            no_link_pagerank = 0
+            for id,link in links.items():
+                if len(link) == 0:
+                    no_link_pagerank += current_page_ranks[id]
+
+            for id in links:
+                current_page_rank = current_page_ranks[id]
+                current_link_count = link_count[id]
+                # 無条件で0.15を保持
+                next_page_ranks[id] += 0.15 + (no_link_pagerank / all_node) * 0.85
+
+                for link_id in links[id]:
+                    next_page_ranks[link_id] += current_page_rank * 0.85 / current_link_count
+
+            # 収束判定
+            # 前回との差
+            difference_ranks = 0
+            for id in links:
+                difference_ranks += (current_page_ranks[id] - next_page_ranks[id])**2
+                #print("id:",id,difference_ranks,current_page_ranks[id],next_page_ranks[id])
+                all_pagerank += next_page_ranks[id]
+
+            if difference_ranks < eps:
+                return_page_ranks = next_page_ranks.copy()
+                self.top_10_ranks(next_page_ranks)
+                return return_page_ranks
+
+            current_page_ranks = next_page_ranks.copy()
+
+            for id in links.keys():
+                next_page_ranks[id] = 0
+            # ページランクが保存しているか確認
+            print(all_pagerank,all_node)
+            assert(all_pagerank - all_node < 0.001)
+
+
+    # BFSとpagerankを組み合わせた下方
+    def find_longest_path2(self, start, goal):
+        page_ranks = self.find_most_popular_pages2(10)
+        startID = self.getIdFromTitles(start)
+        goalID = self.getIdFromTitles(goal)
+
+        links = self.links
+        titles = self.titles
+
+        longest_path = []
+        max_length = -1
+        end_cnt = 0
+
+        alpha = 0.001
+        heap = []
+        # pagerank,id,path,distanceを保持
+        heapq.heappush(heap,(0,startID,[startID],0))
+
+        while heap:
+            current_rank,current_id,current_path,current_distance = heapq.heappop(heap)
+            
+            if current_id == goalID:
+                print(current_path)
+                if current_distance > max_length:
+                    longest_path = current_path.copy()
+                    max_length = current_distance
+                    end_cnt += 1
+                    # max_lengthを10回更新したら終了
+                    if end_cnt == 100:
+                        break
+                    continue
+
+            current_distance += 1
+            if current_distance > 100:
+                continue
+
+            for child in links[current_id]:
+                if not child in current_path:
+                    score = -(page_ranks[child]+ alpha * current_distance)
+                    heapq.heappush(heap,(score,child,current_path + [child],current_distance))
+
+
+        if longest_path:
+            self.assert_path(longest_path,start,goal)
+            print(f"The longest path between {start} and {goal} is {max_length}")
+            for path in longest_path:
+                print(titles[path])
+            return longest_path
+        print("Not found")
+
+
+
+
         
 
 
@@ -304,12 +451,14 @@ if __name__ == "__main__":
 
     # Homework #1
     #wikipedia.find_shortest_path("渋谷", "パレートの法則")
-    wikipedia.find_shortest_path("渋谷", "小野妹子")
-    #wikipedia.find_shortest_path("A", "B")
+    #wikipedia.find_shortest_path("渋谷", "小野妹子")
+    #wikipedia.find_shortest_path("A", "F")
+    wikipedia.find_shortest_path("渋谷", "池袋")
     
     # Homework #2
     #wikipedia.find_most_popular_pages()
     
     # Homework #3 (optional)
+    #wikipedia.find_longest_path2("A", "C")
     wikipedia.find_longest_path("渋谷", "池袋")
     
