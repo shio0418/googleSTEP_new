@@ -50,10 +50,10 @@ my_heap_t my_heap[bin_size];
 
 // binのインデックスを求める
 int define_index (size_t size) {
-  if (size < 100) {
+  if (size < 50) {
     return 0;
   }
-  else if (size < 1000) {
+  else if (size < 100) {
     return 1;
   }
   else {
@@ -69,9 +69,10 @@ void my_add_to_free_list(my_metadata_t *metadata,int index) {
   my_metadata_t *current = prev->next;
   //printf("%p %p %p\n",prev,metadata,current);
   // 右結合
+
   while (current) {
     //printf("%p %p %p\n",prev,metadata,current);
-    if (metadata->size + sizeof(my_metadata_t) + metadata == current) {
+    if (metadata->size + sizeof(my_metadata_t) + (char*)metadata == (char*)current) {
       
       prev->next = metadata;
       metadata->next = current->next;
@@ -83,16 +84,11 @@ void my_add_to_free_list(my_metadata_t *metadata,int index) {
   prev = current;
   current = current->next;
   }
-  // 先頭追加
+  // 右結合しなかった場合は、先頭追加
   if (!merged) {
-    
+    metadata->next = my_heap[index].free_head;
+    my_heap[index].free_head = metadata;
   }
-  //metadata->next = my_heap.free_head;
-  //my_heap.free_head = metadata;
-  
-  metadata->next = my_heap[index].free_head;
-  my_heap[index].free_head = metadata;
-
 }
 
 void my_remove_from_free_list(my_metadata_t *metadata, my_metadata_t *prev,int index) {
@@ -134,20 +130,23 @@ void *my_malloc(size_t size) {
   my_metadata_t *best_data_prev =  NULL;
 
   // Free List Bin
-  metadata = my_heap[index].free_head;
-  while (metadata) {
-    //printf("%zu\n",metadata->size);
-    if (metadata->size >= size ) {
-      if (best_data == NULL ||  metadata->size < best_data->size) {
-        best_data = metadata;
-        best_data_prev = prev;
+  //metadata = my_heap[index].free_head;
+  while (index < bin_size && best_data == NULL) 
+    while (metadata) {
+      //printf("%zu\n",metadata->size);
+      metadata = my_heap[index].free_head;
+      if (metadata->size >= size ) {
+        if (best_data == NULL ||  metadata->size < best_data->size) {
+          best_data = metadata;
+          best_data_prev = prev;
+        }
+      
       }
-    
+      prev = metadata;
+      metadata = metadata->next;
+      //printf("%d",index);
+      index++;
     }
-    prev = metadata;
-    metadata = metadata->next;
-    //printf("%d",index);
-  }
   metadata = best_data;
   prev = best_data_prev;
   // now, metadata points to the first free slot
@@ -163,7 +162,6 @@ void *my_malloc(size_t size) {
     //     <---------------------->
     //            buffer_size
     size_t buffer_size = 4096;
-    //size_t buffer_size = ((size + sizeof(my_metadata_t) + 4095) / 4096) * 4096;
     my_metadata_t *metadata = (my_metadata_t *)mmap_from_system(buffer_size);
     metadata->size = buffer_size - sizeof(my_metadata_t);
     metadata->next = NULL;
